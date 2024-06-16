@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -48,7 +49,8 @@ namespace StarterAssets
 
         [Header("Player Grounded")]
         [Tooltip("If the character is grounded or not. Not part of the CharacterController built in grounded check")]
-        public bool Grounded = true;
+        bool Grounded = true;
+        MovementState state = MovementState.Stand;
 
         [Tooltip("Useful for rough ground")]
         public float GroundedOffset = -0.14f;
@@ -90,6 +92,7 @@ namespace StarterAssets
         // timeout deltatime
         private float _jumpTimeoutDelta;
         private float _fallTimeoutDelta;
+        private float _rollDuration;
 
         // animation IDs
         private int _animIDSpeed;
@@ -97,6 +100,7 @@ namespace StarterAssets
         private int _animIDJump;
         private int _animIDFreeFall;
         private int _animIDMotionSpeed;
+        private int _animIDRoll;
 
 #if ENABLE_INPUT_SYSTEM
         private PlayerInput _playerInput;
@@ -173,6 +177,7 @@ namespace StarterAssets
             _animIDJump = Animator.StringToHash("Jump");
             _animIDFreeFall = Animator.StringToHash("FreeFall");
             _animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
+            _animIDRoll = Animator.StringToHash("Roll");
         }
 
         private void GroundedCheck()
@@ -184,10 +189,9 @@ namespace StarterAssets
                 QueryTriggerInteraction.Ignore);
 
             // update animator if using character
-            if (_hasAnimator)
-            {
-                _animator.SetBool(_animIDGrounded, Grounded);
-            }
+            UpdateAnimationState(!Grounded);
+            if (Grounded && state == MovementState.Jump)
+                ChangeState(MovementState.Stand);
         }
 
         private void CameraRotation()
@@ -213,72 +217,107 @@ namespace StarterAssets
 
         private void Move()
         {
-            // set target speed based on move speed, sprint speed and if sprint is pressed
-            float targetSpeed = _input.sprint ? SprintSpeed : MoveSpeed;
-
+            float targetSpeed = _input.Sprint ? SprintSpeed : MoveSpeed;
             // a simplistic acceleration and deceleration designed to be easy to remove, replace, or iterate upon
 
-            // note: Vector2's == operator uses approximation so is not floating point error prone, and is cheaper than magnitude
-            // if there is no input, set the target speed to 0
-            if (_input.move == Vector2.zero) targetSpeed = 0.0f;
+            if (_input.move == Vector2.zero)
+            {
+                targetSpeed = 0.0f;
+                if (state != MovementState.Stand)
+                    ChangeState(MovementState.Stand);
+            }
+            else
+                ChangeState(MovementState.Walk);
+            
 
-            // a reference to the players current horizontal velocity
             float currentHorizontalSpeed = new Vector3(_controller.velocity.x, 0.0f, _controller.velocity.z).magnitude;
 
             float speedOffset = 0.1f;
             float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
-
+            
             // accelerate or decelerate to target speed
             if (currentHorizontalSpeed < targetSpeed - speedOffset ||
                 currentHorizontalSpeed > targetSpeed + speedOffset)
             {
-                // creates curved result rather than a linear one giving a more organic speed change
-                // note T in Lerp is clamped, so we don't need to clamp our speed
                 _speed = Mathf.Lerp(currentHorizontalSpeed, targetSpeed * inputMagnitude,
                     Time.deltaTime * SpeedChangeRate);
 
-                // round speed to 3 decimal places
                 _speed = Mathf.Round(_speed * 1000f) / 1000f;
             }
             else
             {
                 _speed = targetSpeed;
             }
+            
 
             _animationBlend = Mathf.Lerp(_animationBlend, targetSpeed, Time.deltaTime * SpeedChangeRate);
             if (_animationBlend < 0.01f) _animationBlend = 0f;
 
-            // normalise input direction
             Vector3 inputDirection = new Vector3(_input.move.x, 0.0f, _input.move.y).normalized;
 
-            // note: Vector2's != operator uses approximation so is not floating point error prone, and is cheaper than magnitude
-            // if there is a move input rotate player when the player is moving
-            if (_input.move != Vector2.zero)
+            // rotate player when the player is moving
+            if (_input.move != Vector2.zero/* && Grounded && state != MovementState.Roll && state != MovementState.Dash*/)
             {
                 _targetRotation = Mathf.Atan2(inputDirection.x, inputDirection.z) * Mathf.Rad2Deg +
-                                  _mainCamera.transform.eulerAngles.y;
+                _mainCamera.transform.eulerAngles.y;
                 float rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, _targetRotation, ref _rotationVelocity,
                     RotationSmoothTime);
 
                 // rotate to face input direction relative to camera position
                 transform.rotation = Quaternion.Euler(0.0f, rotation, 0.0f);
+                print("Rotating");
+
+                //Movements.Rotate(ref _targetRotation, inputDirection, gameObject.transform, _mainCamera, ref _rotationVelocity, RotationSmoothTime, out _targetRotation);
             }
-
-
             Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
 
+
+            print("moving\n" + "target rotation: " + _targetRotation);
             // move the player
             _controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) +
-                             new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+                            new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
 
-            // update animator if using character
-            if (_hasAnimator)
+            if (_input.Roll && state != MovementState.Roll)
             {
-                _animator.SetFloat(_animIDSpeed, _animationBlend);
-                _animator.SetFloat(_animIDMotionSpeed, inputMagnitude);
+                ChangeState(MovementState.Roll);
+            }
+
+            
+
+            UpdateAnimationSpeed(inputMagnitude, _animationBlend);
+        }
+        void UpdateAnimationSpeed(float inputMagnitude, float animationBlend)
+        {
+            if (_animator == null)
+                return;
+            _animator.SetFloat(_animIDSpeed, animationBlend);
+            _animator.SetFloat(_animIDMotionSpeed, inputMagnitude);
+
+        }
+        void UpdateAnimationState(bool jumping)
+        {
+            if (_animator == null)
+            {
+                return;
+            }
+            _animator.SetBool(_animIDGrounded, Grounded);
+            if(!jumping) 
+            {
+                _animator.SetBool(_animIDJump, false);
+                _animator.SetBool(_animIDFreeFall, false);
+            }
+            if(jumping)
+            {
+                _animator.SetBool(_animIDJump, true);
             }
         }
-
+        void UpdateAnimationState(MovementState state)
+        {
+            if(state == MovementState.Roll)
+            {
+                _animator.SetBool(_animIDRoll, true);
+            }
+        }
         private void JumpAndGravity()
         {
             if (Grounded)
@@ -287,11 +326,6 @@ namespace StarterAssets
                 _fallTimeoutDelta = FallTimeout;
 
                 // update animator if using character
-                if (_hasAnimator)
-                {
-                    _animator.SetBool(_animIDJump, false);
-                    _animator.SetBool(_animIDFreeFall, false);
-                }
 
                 // stop our velocity dropping infinitely when grounded
                 if (_verticalVelocity < 0.0f)
@@ -300,16 +334,13 @@ namespace StarterAssets
                 }
 
                 // Jump
-                if (_input.jump && _jumpTimeoutDelta <= 0.0f)
+                if (_input.Jump && _jumpTimeoutDelta <= 0.0f)
                 {
                     // the square root of H * -2 * G = how much velocity needed to reach desired height
                     _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
 
-                    // update animator if using character
-                    if (_hasAnimator)
-                    {
-                        _animator.SetBool(_animIDJump, true);
-                    }
+                    ChangeState(MovementState.Jump);
+                    UpdateAnimationState(true);
                 }
 
                 // jump timeout
@@ -338,7 +369,8 @@ namespace StarterAssets
                 }
 
                 // if we are not grounded, do not jump
-                _input.jump = false;
+                _input.Jump = false;
+                UpdateAnimationState(false);
             }
 
             // apply gravity over time if under terminal (multiply by delta time twice to linearly speed up over time)
@@ -388,5 +420,48 @@ namespace StarterAssets
                 AudioSource.PlayClipAtPoint(LandingAudioClip, transform.TransformPoint(_controller.center), FootstepAudioVolume);
             }
         }
+
+        bool ChangeState(MovementState state)
+        {
+            if (this.state == MovementState.Roll)
+                return false;
+            if (this.state == MovementState.Jump && !Grounded)
+                return false;
+
+            if (state == MovementState.Roll && Grounded && this.state != MovementState.Roll)
+            {
+                this.state = MovementState.Roll;
+                StartRoll();
+            }
+            this.state = state;
+            return true;
+        }
+        void StartRoll()
+        {
+            UpdateAnimationState(state);
+            StartCoroutine(ERoll());
+        }
+        IEnumerator ERoll()
+        {
+            yield return new WaitForSeconds(_animator.GetCurrentAnimatorClipInfo(0)[0].clip.length);
+            state = MovementState.Stand;
+        }
+
     }
+    static class Movements
+    {
+        public static void Rotate(ref float targetRotation, Vector3 inputDirection, Transform transform, GameObject mainCamera, ref float _rotationVelocity, float RotationSmoothTime, out float targetRot)
+        {
+            targetRotation = Mathf.Atan2(inputDirection.x, inputDirection.z) * Mathf.Rad2Deg +
+                mainCamera.transform.eulerAngles.y;
+            float rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetRotation, ref _rotationVelocity, RotationSmoothTime);
+
+            // rotate to face input direction relative to camera position
+            transform.rotation = Quaternion.Euler(0.0f, rotation, 0.0f);
+
+            targetRot = targetRotation;
+        }
+    }
+
+    enum MovementState { Stand, Walk, Run, Jump, Roll, Dash}
 }

@@ -10,8 +10,12 @@ namespace StarterAssets
 		[Header("Character Input Values")]
 		public Vector2 move;
 		public Vector2 look;
-		public bool jump;
-		public bool sprint;
+		bool jump;
+		public bool Jump { get => jump; set => jump = value; }
+		bool sprint;
+		public bool Sprint { get => sprint; set => sprint = value; }
+		bool roll;
+		public bool Roll { get => roll; set { if(jump == false) roll = value; } }
 
 		[Header("Movement Settings")]
 		public bool analogMovement;
@@ -43,6 +47,11 @@ namespace StarterAssets
 		{
 			SprintInput(value.isPressed);
 		}
+
+		public void OnRoll(InputValue value)
+		{
+			RollInput(value.isPressed);
+		}
 #endif
 
 
@@ -64,6 +73,11 @@ namespace StarterAssets
 		public void SprintInput(bool newSprintState)
 		{
 			sprint = newSprintState;
+		}
+
+		public void RollInput(bool newRollState)
+		{
+			Roll = newRollState;
 		}
 		
 		private void OnApplicationFocus(bool hasFocus)
