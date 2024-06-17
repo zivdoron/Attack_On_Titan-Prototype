@@ -15,7 +15,7 @@ namespace StarterAssets
 		bool sprint;
 		public bool Sprint { get => sprint; set => sprint = value; }
 		bool roll;
-		public bool Roll { get => roll; set { if(jump == false) roll = value; } }
+		public bool Roll { get => roll; set { roll = value; } }
 
 		[Header("Movement Settings")]
 		public bool analogMovement;
@@ -88,6 +88,14 @@ namespace StarterAssets
 		private void SetCursorState(bool newState)
 		{
 			Cursor.lockState = newState ? CursorLockMode.Locked : CursorLockMode.None;
+		}
+
+		public void ResetAttributes()
+		{
+			jump = false;
+			sprint = false;
+			roll = false;
+
 		}
 	}
 	
