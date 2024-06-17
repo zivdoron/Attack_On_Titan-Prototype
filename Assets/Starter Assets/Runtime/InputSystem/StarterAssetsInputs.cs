@@ -93,7 +93,6 @@ namespace StarterAssets
 		public void ResetAttributes()
 		{
 			jump = false;
-			sprint = false;
 			roll = false;
 
 		}
