@@ -101,6 +101,7 @@ namespace StarterAssets
         private int _animIDFreeFall;
         private int _animIDMotionSpeed;
         private int _animIDRoll;
+        private int _animIDAttack;
 
 #if ENABLE_INPUT_SYSTEM
         private PlayerInput _playerInput;
@@ -139,7 +140,7 @@ namespace StarterAssets
         private void Start()
         {
             _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
-            
+
             _hasAnimator = TryGetComponent(out _animator);
             _controller = GetComponent<CharacterController>();
             _input = GetComponent<StarterAssetsInputs>();
@@ -178,6 +179,7 @@ namespace StarterAssets
             _animIDFreeFall = Animator.StringToHash("FreeFall");
             _animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
             _animIDRoll = Animator.StringToHash("Roll");
+            _animIDAttack = Animator.StringToHash("Attack");
         }
 
         private void GroundedCheck()
@@ -228,13 +230,13 @@ namespace StarterAssets
             }
             else
                 ChangeState(MovementState.Walk);
-            
+
 
             float currentHorizontalSpeed = new Vector3(_controller.velocity.x, 0.0f, _controller.velocity.z).magnitude;
 
             float speedOffset = 0.1f;
             float inputMagnitude = _input.analogMovement ? _input.move.magnitude : 1f;
-            
+
             // accelerate or decelerate to target speed
             if (currentHorizontalSpeed < targetSpeed - speedOffset ||
                 currentHorizontalSpeed > targetSpeed + speedOffset)
@@ -248,7 +250,7 @@ namespace StarterAssets
             {
                 _speed = targetSpeed;
             }
-            
+
 
             _animationBlend = Mathf.Lerp(_animationBlend, targetSpeed, Time.deltaTime * SpeedChangeRate);
             if (_animationBlend < 0.01f) _animationBlend = 0f;
@@ -270,19 +272,25 @@ namespace StarterAssets
                 //Movements.Rotate(ref _targetRotation, inputDirection, gameObject.transform, _mainCamera, ref _rotationVelocity, RotationSmoothTime, out _targetRotation);
             }
             Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
-            if(state == MovementState.Jump || state == MovementState.Roll || state == MovementState.Dash)
+            if (state == MovementState.Jump || state == MovementState.Roll || state == MovementState.Dash)
                 targetDirection = Quaternion.Euler(0.0f, transform.rotation.eulerAngles.y, 0.0f) * Vector3.forward;
             //print("moving\n" + "target rotation: " + _targetRotation);
-                
+
             _controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) +
                             new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
-            
+
 
             if (_input.Roll && state != MovementState.Roll)
             {
                 ChangeState(MovementState.Roll);
             }
             else _input.Roll = false;
+            if (_input.Attack && state != MovementState.Attack)
+            {
+                ChangeState(MovementState.Attack);
+            }
+            else _input.Attack = false;
+
 
             print("roll input: " + _input.Roll + "\nstate: " + state);
 
@@ -303,21 +311,27 @@ namespace StarterAssets
                 return;
             }
             _animator.SetBool(_animIDGrounded, Grounded);
-            if(!jumping) 
+            if (!jumping)
             {
                 _animator.SetBool(_animIDJump, false);
                 _animator.SetBool(_animIDFreeFall, false);
             }
-            if(jumping)
+            if (jumping)
             {
                 _animator.SetBool(_animIDJump, true);
             }
         }
         void UpdateAnimationState(MovementState state)
         {
+            if(state == MovementState.Roll)
+            _animator.SetTrigger(_animIDRoll);
+            else
+            _animator.ResetTrigger(_animIDRoll);
 
-            _animator.SetBool(_animIDRoll, state == MovementState.Roll);
- 
+            if(state == MovementState.Attack)
+            _animator.SetTrigger(_animIDAttack);
+            else
+            _animator.ResetTrigger(_animIDAttack);
         }
         private void JumpAndGravity()
         {
@@ -426,16 +440,21 @@ namespace StarterAssets
         {
             if (this.state == MovementState.Roll && state != MovementState.Middle)
             {
-                _input.Roll = false;
+                DisableInputDependants();
+                return false;
+            }
+            if (this.state == MovementState.Attack && state != MovementState.Middle)
+            {
+                DisableInputDependants();
                 return false;
             }
             if (this.state == MovementState.Jump && !Grounded)
                 return false;
-            if(this.state == MovementState.Jump && state != MovementState.Middle)
+            if (this.state == MovementState.Jump && state != MovementState.Middle)
                 return false;
-            if(state == MovementState.Jump && !Grounded)
+            if (state == MovementState.Jump && !Grounded)
             {
-                _input.Jump = false;
+                DisableInputDependants();
                 return false;
             }
 
@@ -443,9 +462,15 @@ namespace StarterAssets
             {
                 this.state = MovementState.Roll;
                 UpdateAnimationState(state);
-                StartRoll();
+                StartCoroutine(StartAction(new OnAction(() => _input.Roll = false), _animator.GetCurrentAnimatorStateInfo(0).length * 1.1f, new OnAction(() => ChangeState(MovementState.Middle))));
             }
-            if(this.state == MovementState.Roll && state == MovementState.Middle)
+            if (state == MovementState.Attack && Grounded && this.state != MovementState.Attack)
+            {
+                this.state = MovementState.Attack;
+                UpdateAnimationState(state);
+                StartCoroutine( StartAction(new OnAction(() => _input.Attack = false), _animator.GetCurrentAnimatorStateInfo(1).length * 1.1f, new OnAction(() => ChangeState(MovementState.Middle))));
+            }
+            if (this.state == MovementState.Roll && state == MovementState.Middle)
             {
                 UpdateAnimationState(state);
             }
@@ -453,16 +478,25 @@ namespace StarterAssets
             this.state = state;
             return true;
         }
-
-        void StartRoll()
+        void DisableInputDependants()
         {
             _input.Roll = false;
-            StartCoroutine(ERoll());
+            _input.Attack = false;
+            _input.Jump = false;
+
         }
-        IEnumerator ERoll()
+
+        //Utils
+        IEnumerator StartAction(OnAction onStart, float timeToWait, OnAction afterWait)
         {
-            yield return new WaitForSeconds(_animator.GetCurrentAnimatorClipInfo(0)[0].clip.length * 0.3f);
-            ChangeState(MovementState.Middle);
+            yield return new WaitForFixedUpdate();
+            onStart.Invoke();
+            StartCoroutine(DelayedInvokation(timeToWait, afterWait));
+        }
+        IEnumerator DelayedInvokation(float timeToWait, OnAction afterWait)
+        {
+            yield return new WaitForSeconds(timeToWait);
+            afterWait.Invoke();
         }
         #endregion
     }
@@ -481,5 +515,8 @@ namespace StarterAssets
         }
     }
 
-    enum MovementState { Stand, Walk, Run, Jump, Roll, Dash, Middle}
+    enum MovementState { Stand, Walk, Run, Jump, Roll, Dash, Middle, Attack, Shield }
+
 }
+//Utils
+public delegate void OnAction();

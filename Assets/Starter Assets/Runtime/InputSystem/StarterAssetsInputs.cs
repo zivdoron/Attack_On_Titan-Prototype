@@ -14,8 +14,10 @@ namespace StarterAssets
 		public bool Jump { get => jump; set => jump = value; }
 		bool sprint;
 		public bool Sprint { get => sprint; set => sprint = value; }
-		bool roll;
+		bool roll = false;
 		public bool Roll { get => roll; set { roll = value; } }
+		bool attack = false;
+		public bool Attack { get => attack; set => attack = value; }
 
 		[Header("Movement Settings")]
 		public bool analogMovement;
@@ -52,6 +54,11 @@ namespace StarterAssets
 		{
 			RollInput(value.isPressed);
 		}
+
+		public void OnAttack(InputValue value)
+		{
+			AttackInput(value.isPressed);
+		}
 #endif
 
 
@@ -78,6 +85,11 @@ namespace StarterAssets
 		public void RollInput(bool newRollState)
 		{
 			Roll = newRollState;
+		}
+
+		public void AttackInput(bool newAttackState)
+		{
+			Attack = newAttackState;
 		}
 		
 		private void OnApplicationFocus(bool hasFocus)
