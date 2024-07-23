@@ -102,6 +102,7 @@ namespace StarterAssets
         private int _animIDMotionSpeed;
         private int _animIDRoll;
         private int _animIDAttack;
+        private int _animIDShield;
 
 #if ENABLE_INPUT_SYSTEM
         private PlayerInput _playerInput;
@@ -180,6 +181,7 @@ namespace StarterAssets
             _animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
             _animIDRoll = Animator.StringToHash("Roll");
             _animIDAttack = Animator.StringToHash("Attack");
+            _animIDShield = Animator.StringToHash("Shield");
         }
 
         private void GroundedCheck()
@@ -290,8 +292,10 @@ namespace StarterAssets
                 ChangeState(MovementState.Attack);
             }
             else _input.Attack = false;
-
-
+            if(_input.Block && state != MovementState.Shield)
+                ChangeState(MovementState.Shield);
+            if(!_input.Block && state == MovementState.Shield)
+                ChangeState(MovementState.Middle);
             print("roll input: " + _input.Roll + "\nstate: " + state);
 
             UpdateAnimationSpeed(inputMagnitude, _animationBlend);
@@ -332,6 +336,8 @@ namespace StarterAssets
             _animator.SetTrigger(_animIDAttack);
             else
             _animator.ResetTrigger(_animIDAttack);
+
+            _animator.SetBool(_animIDShield, state == MovementState.Shield);
         }
         private void JumpAndGravity()
         {
@@ -448,6 +454,11 @@ namespace StarterAssets
                 DisableInputDependants();
                 return false;
             }
+            if (this.state == MovementState.Shield && state != MovementState.Middle)
+            {
+                DisableInputDependants();
+                return false;
+            }
             if (this.state == MovementState.Jump && !Grounded)
                 return false;
             if (this.state == MovementState.Jump && state != MovementState.Middle)
@@ -470,6 +481,16 @@ namespace StarterAssets
                 UpdateAnimationState(state);
                 StartCoroutine( StartAction(new OnAction(() => _input.Attack = false), _animator.GetCurrentAnimatorStateInfo(1).length * 1.1f, new OnAction(() => ChangeState(MovementState.Middle))));
             }
+            if (state == MovementState.Shield && Grounded && this.state != MovementState.Shield)
+            {
+                this.state = MovementState.Shield;
+                UpdateAnimationState(state);
+            }
+            if(this.state == MovementState.Shield && state == MovementState.Middle)
+            {
+                this.state = MovementState.Middle;
+                UpdateAnimationState(state);
+            }
             if (this.state == MovementState.Roll && state == MovementState.Middle)
             {
                 UpdateAnimationState(state);
@@ -483,7 +504,8 @@ namespace StarterAssets
             _input.Roll = false;
             _input.Attack = false;
             _input.Jump = false;
-
+            if(state != MovementState.Shield)
+            _input.Block = false;
         }
 
         //Utils
