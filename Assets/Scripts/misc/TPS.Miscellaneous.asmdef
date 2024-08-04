@@ -1,10 +1,7 @@
 {
-    "name": "Unity.StarterAssets",
+    "name": "TPS.Miscellaneous",
     "rootNamespace": "",
-    "references": [
-        "GUID:75469ad4d38634e559750d17036d5f7c",
-        "GUID:2a66e8974ed3c95449fca0f27c2993c1"
-    ],
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

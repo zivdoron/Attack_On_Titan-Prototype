@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using TPSproto.Events;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -540,5 +541,3 @@ namespace StarterAssets
     enum MovementState { Stand, Walk, Run, Jump, Roll, Dash, Middle, Attack, Shield }
 
 }
-//Utils
-public delegate void OnAction();
